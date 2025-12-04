@@ -6,6 +6,25 @@ import torch
 import torch.nn.functional as F
 import cv2 # 必须确保安装 opencv-python
 import imageio # 必须确保安装 imageio 和 imageio-ffmpeg
+import json
+from aiohttp import web
+
+# 获取当前自定义节点的目录
+NODE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(NODE_DIR, "infinite_canvas_config.json")
+
+def get_config_path():
+    return CONFIG_FILE
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"base_settings": {}, "custom_buttons": []}
+
+def save_config(config_data):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config_data, f, indent=4)
 
 # 1. 文本输入节点
 class CanvasTextInput:
@@ -203,13 +222,38 @@ class CanvasResolutionSelector:
         ret_image = ret_image.permute(0, 2, 3, 1)
         return (ret_image, target_w, target_h)
 
+# 7. 随机种子生成节点
+class CanvasRandomSeed:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "seed_type": (["Random", "Fixed"], {"default": "Random"}),
+                "fixed_seed": ("INT", {"default": 0, "min": 0, "max": 2**32-1, "step": 1, "display": "number"}),
+            }
+        }
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("seed",)
+    FUNCTION = "generate_seed"
+    CATEGORY = "无限画布"
+
+    def generate_seed(self, seed_type, fixed_seed):
+        if seed_type == "Random":
+            # 使用Python的random模块生成一个0到2**31-1之间的随机整数
+            import random
+            random_seed = random.randint(0, 2**31 - 1)
+            return (random_seed,)
+        else:
+            return (fixed_seed,)
+
 NODE_CLASS_MAPPINGS = {
     "CanvasTextInput": CanvasTextInput,
     "CanvasImageInput": CanvasImageInput,
     "CanvasImageOutput": CanvasImageOutput,
     "CanvasResolutionSelector": CanvasResolutionSelector,
     "CanvasVideoInput": CanvasVideoInput,
-    "CanvasVideoOutput": CanvasVideoOutput
+    "CanvasVideoOutput": CanvasVideoOutput,
+    "CanvasRandomSeed": CanvasRandomSeed
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CanvasTextInput": "画布文本输入 📝",
@@ -217,5 +261,33 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CanvasImageOutput": "画布图像输出 📤",
     "CanvasResolutionSelector": "画布媒体处理 & 分辨率 📐",
     "CanvasVideoInput": "画布视频输入 🎬",
-    "CanvasVideoOutput": "画布视频输出 🎬"
+    "CanvasVideoOutput": "画布视频输出 🎬",
+    "CanvasRandomSeed": "画布随机种子生成 🌱"
 }
+
+# Web server setup
+WEB_DIRECTORY = "./121"
+
+@classmethod
+def get_web_directory(cls):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), WEB_DIRECTORY)
+
+def setup_api_endpoints(app):
+    @app.router.get("/infinite_canvas/config")
+    async def get_infinite_canvas_config(request):
+        config = load_config()
+        return web.json_response(config)
+
+    @app.router.post("/infinite_canvas/config")
+    async def post_infinite_canvas_config(request):
+        config_data = await request.json()
+        save_config(config_data)
+        return web.json_response({"status": "success"})
+
+# 注册 API 端点
+try:
+    import server
+    server.PromptServer.instance.routes.add_static("/infinite_canvas", get_web_directory())
+    setup_api_endpoints(server.PromptServer.instance.app)
+except Exception as e:
+    print(f"Failed to setup Infinite Canvas API endpoints: {e}")
