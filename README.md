@@ -6,5 +6,11 @@
 
 ## 需要在comfyui启动参数上配置：--enable-cors-header
 
+### 官方包的启动参数参考：
+ ```sh
+.\python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --enable-cors-header
+pause
+   ```
+
 ### 秋叶启动器这样填：
 <img width="1605" height="993" alt="屏幕截图 2025-11-27 020215" src="https://github.com/user-attachments/assets/236efbd0-a565-434a-a407-fc0098e9f346" />
